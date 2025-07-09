@@ -8,51 +8,45 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"strings"
+	"fmt"
 )
 
 func Login(c *gin.Context) {
 	var input struct {
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверные данные"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат запроса"})
 		return
 	}
 
+	email := strings.ToLower(strings.TrimSpace(input.Email))
+
 	var user models.User
-	err := config.DB.Get(&user, "SELECT * FROM users WHERE email=$1", input.Email)
+	err := config.DB.Get(&user, "SELECT id, email, password FROM users WHERE email=$1", email)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не найден"})
 		return
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password))
-	if err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный пароль"})
 		return
 	}
 
-	accessToken, err := utils.GenerateAccessToken(user.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка генерации токена"})
-		return
-	}
-
-	refreshToken, err := utils.GenerateRefreshToken(user.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка генерации refresh токена"})
-		return
-	}
-
-	// Установим refresh токен в куки
-	c.SetCookie("refresh_token", refreshToken, 3600*24*7, "/", "localhost", false, true)
+	// Generate JWT tokens...
+	accessToken, _ := utils.GenerateAccessToken(user.ID)
+	refreshToken, _ := utils.GenerateRefreshToken(user.ID)
 
 	c.JSON(http.StatusOK, gin.H{
-		"access_token": accessToken,
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
 	})
 }
+
 
 func Register(c *gin.Context) {
 	var input struct {
@@ -78,13 +72,17 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	_, err = config.DB.Exec("INSERT INTO users (email, password) VALUES ($1, $2)", input.Email, string(hashedPassword))
+	_, err = config.DB.Exec("INSERT INTO users (email, password) VALUES ($1, $2)", input.Email, hashedPassword)
 if err != nil {
-	c.JSON(http.StatusInternalServerError, gin.H{
-		"error":   "Ошибка записи в БД",
-		"details": err.Error(),
-	})
-	return
+    if strings.Contains(err.Error(), "duplicate key value") && strings.Contains(err.Error(), "users_email_key") {
+        c.JSON(http.StatusConflict, gin.H{"error": "Этот email уже зарегистрирован"})
+    } else {
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error":   "Ошибка записи в БД",
+            "details": err.Error(),
+        })
+    }
+    return
 }
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Успешная регистрация"})
@@ -160,4 +158,54 @@ func ChangePassword(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Пароль успешно изменён"})
+}
+
+func GetProfile(c *gin.Context) {
+	userID := c.GetInt("user_id")
+	fmt.Println("userID из токена:", userID)
+	var user models.User
+
+	err := config.DB.Get(&user, "SELECT id, email, name, created_at FROM users WHERE id = $1", userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Ошибка получения профиля",
+			"details": err.Error(),
+		})
+		
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":         user.ID,
+		"email":      user.Email,
+		"name":       func() string {
+				if user.Name.Valid {
+					return user.Name.String
+				}
+				return ""
+			}(),
+		"created_at": user.CreatedAt,
+	})
+}
+
+func UpdateProfile(c *gin.Context) {
+	userID := c.GetInt("user_id")
+
+	type Input struct {
+		Name string `json:"name"`
+	}
+
+	var input Input
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверные данные"})
+		return
+	}
+
+	_, err := config.DB.Exec("UPDATE users SET name=$1 WHERE id=$2", input.Name, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось обновить профиль"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Профиль обновлён"})
 }
