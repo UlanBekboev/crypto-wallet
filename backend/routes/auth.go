@@ -18,7 +18,7 @@ func AuthRoutes(r *gin.Engine) {
 		auth.PUT("/profile", middleware.AuthMiddleware(), controllers.UpdateProfile)
 		auth.POST("/forgot-password", controllers.ForgotPassword)
 		auth.POST("/reset-password", controllers.ResetPassword)
-
+		auth.POST("/logout", controllers.Logout)
 	}
 }
 

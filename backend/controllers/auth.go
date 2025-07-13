@@ -8,9 +8,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/go-playground/validator/v10"
 	"strings"
 	"fmt"
 )
+
+var validate = validator.New()
+
+type RegisterInput struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=6"`
+	Name     string `json:"name" validate:"required"`
+}
 
 func Login(c *gin.Context) {
 	var input struct {
@@ -37,13 +46,16 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// Generate JWT tokens...
+	// Generate JWT tokens
 	accessToken, _ := utils.GenerateAccessToken(user.ID)
 	refreshToken, _ := utils.GenerateRefreshToken(user.ID)
 
+	// Устанавливаем токены в cookie
+	c.SetCookie("access_token", accessToken, 3600, "/", "localhost", false, true)
+	c.SetCookie("refresh_token", refreshToken, 7*24*3600, "/", "localhost", false, true)
+
 	c.JSON(http.StatusOK, gin.H{
-		"access_token":  accessToken,
-		"refresh_token": refreshToken,
+		"message": "Успешный вход",
 	})
 }
 
@@ -56,6 +68,13 @@ func Register(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверные данные"})
+		return
+	}
+
+	if err := utils.Validate.Struct(input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"errors": utils.FormatValidationErrors(err),
+		})
 		return
 	}
 
@@ -90,33 +109,50 @@ if err != nil {
 
 func RefreshToken(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
-	if err != nil {
+	if err != nil || refreshToken == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh токен отсутствует"})
 		return
 	}
 
-	_, claims, err := utils.ParseRefreshToken(refreshToken)
+	claims, err := utils.ValidateRefreshToken(refreshToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный refresh токен"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Недействительный refresh токен"})
 		return
 	}
 
 	userID := int(claims["user_id"].(float64))
+	newAccessToken, _ := utils.GenerateAccessToken(userID)
 
-	accessToken, err := utils.GenerateAccessToken(userID)
+	c.SetCookie("access_token", newAccessToken, 3600, "/", "localhost", false, true)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Токен обновлён",
+	})
+}
+
+
+func Me(c *gin.Context) {
+	userID := c.GetInt("user_id")
+
+	var user models.User
+	err := config.DB.Get(&user, "SELECT id, email, name, created_at FROM users WHERE id = $1", userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось сгенерировать токен"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Пользователь не найден"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"access_token": accessToken,
+		"user": gin.H{
+			"id":    user.ID,
+			"email": user.Email,
+			"name": func() string {
+				if user.Name.Valid {
+					return user.Name.String
+				}
+				return ""
+			}(),
+		},
 	})
-}
-
-func Me(c *gin.Context) {
-	userID := c.GetInt("user_id")
-	c.JSON(http.StatusOK, gin.H{"user_id": userID})
 }
 
 func ChangePassword(c *gin.Context) {
@@ -208,4 +244,10 @@ func UpdateProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Профиль обновлён"})
+}
+
+func Logout(c *gin.Context) {
+	c.SetCookie("access_token", "", -1, "/", "localhost", false, true)
+	c.SetCookie("refresh_token", "", -1, "/", "localhost", false, true)
+	c.JSON(http.StatusOK, gin.H{"message": "Выход выполнен"})
 }
