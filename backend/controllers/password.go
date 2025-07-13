@@ -37,7 +37,7 @@ func ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	resetLink := fmt.Sprintf("http://localhost:3000/reset-password?token=%s", token)
+	resetLink := fmt.Sprintf("http://localhost:3000/reset-password?token=%s&email=%s", token, input.Email)
 
 	err = utils.SendEmail(input.Email, "Сброс пароля", "Ссылка для сброса пароля: "+resetLink)
 if err != nil {

@@ -1,11 +1,39 @@
 package utils
 
 import (
+	"errors"
 	"os"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v4"
 )
+var refreshSecret = []byte(os.Getenv("REFRESH_SECRET"))
+
+type Claims struct {
+	UserID int `json:"user_id"`
+	jwt.RegisteredClaims
+}
+
+func ValidateRefreshToken(tokenStr string) (jwt.MapClaims, error) {
+	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+		// Проверка метода подписи
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("неверный метод подписи")
+		}
+		return refreshSecret, nil
+	})
+
+	if err != nil || !token.Valid {
+		return nil, errors.New("недействительный refresh токен")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, errors.New("неверные claims")
+	}
+
+	return claims, nil
+}
 
 func GenerateAccessToken(userID int) (string, error) {
 	claims := jwt.MapClaims{}
