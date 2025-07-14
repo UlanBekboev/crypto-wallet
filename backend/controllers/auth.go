@@ -5,6 +5,9 @@ import (
 	"backend/models"
 	"backend/utils"
 	"net/http"
+	"backend/middleware"
+	"context"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -33,18 +36,51 @@ func Login(c *gin.Context) {
 	}
 
 	email := strings.ToLower(strings.TrimSpace(input.Email))
+	blockKey := fmt.Sprintf("block:%s", email)
+    failKey := fmt.Sprintf("fail:%s", email)
+
+	blocked, err := middleware.RDB.Get(context.Background(), blockKey).Result()
+    if err == nil && blocked == "1" {
+		// Получаем оставшееся время блокировки
+		ttl, err := middleware.RDB.TTL(context.Background(), blockKey).Result()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка Redis"})
+			return
+	}
+
+	c.JSON(http.StatusTooManyRequests, gin.H{
+		"error":         "Аккаунт временно заблокирован. Попробуйте позже.",
+		"blocked_secs":  int(ttl.Seconds()),
+	})
+	return
+	}
 
 	var user models.User
-	err := config.DB.Get(&user, "SELECT id, email, password FROM users WHERE email=$1", email)
+	err = config.DB.Get(&user, "SELECT id, email, password FROM users WHERE email=$1", email)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не найден"})
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный пароль"})
+	// Увеличиваем счётчик неудачных попыток
+	failCount, _ := middleware.RDB.Incr(context.Background(), failKey).Result()
+	middleware.RDB.Expire(context.Background(), failKey, 15*time.Minute)
+
+	if failCount >= 5 {
+		middleware.RDB.Set(context.Background(), blockKey, "1", 15*time.Minute)
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Слишком много неудачных попыток. Аккаунт заблокирован на 15 минут."})
 		return
 	}
+
+	c.JSON(http.StatusUnauthorized, gin.H{
+		"error": fmt.Sprintf("Неверный пароль. Осталось попыток: %d", 5-failCount),
+	})
+	return
+}
+
+	middleware.RDB.Del(context.Background(), failKey)
+	middleware.RDB.Del(context.Background(), blockKey)
 
 	// Generate JWT tokens
 	accessToken, _ := utils.GenerateAccessToken(user.ID)
