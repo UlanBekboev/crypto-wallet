@@ -11,7 +11,7 @@ export default function ChangePasswordPage() {
   const router = useRouter();
 
   const handleBack = () => {
-    router.back(); // возвращает на предыдущую страницу
+    router.back(); 
   };
 
   const handleChange = async (e: React.FormEvent) => {

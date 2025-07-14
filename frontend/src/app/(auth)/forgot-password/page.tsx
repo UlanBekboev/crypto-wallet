@@ -1,12 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [messageColor, setMessageColor] = useState("text-green-600");
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const handleBack = () => {
+    router.back(); // возвращает на предыдущую страницу
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +66,9 @@ export default function ForgotPasswordPage() {
         }`}
       >
         {loading ? "Отправка..." : "Отправить ссылку для сброса"}
+      </button>
+      <button type="button" onClick={handleBack} className="mt-2 text-blue-600 hover:underline">
+        ← Назад
       </button>
     </form>
   );

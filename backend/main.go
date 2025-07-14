@@ -3,6 +3,7 @@ package main
 import (
 	"backend/config"
 	"backend/routes"
+	"backend/middleware"
 	"github.com/gin-gonic/gin"
 	"backend/utils"
 	"github.com/gin-contrib/cors"
@@ -15,6 +16,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Ошибка подключения к БД:", err)
 	}
+	middleware.InitRateLimiter()
 
 	r := gin.Default()
 
@@ -35,20 +37,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Ошибка запуска сервера:", err)
 	}
+
+	r.Run(":8080")
 }
-
-/* func main() {
-	config.LoadEnv()
-	config.ConnectDB()
-
-	router := gin.Default()
-
-	router.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{"message": "Backend работает!"})
-	})
-
-	routes.AuthRoutes(router)
-
-	router.Run(":" + config.GetEnv("PORT"))
-} */
 

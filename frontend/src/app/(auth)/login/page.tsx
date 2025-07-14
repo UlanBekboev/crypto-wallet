@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -10,6 +10,18 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const [messageColor, setMessageColor] = useState("text-green-600");
   const [loading, setLoading] = useState(false);
+  const [blockedTime, setBlockedTime] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!blockedTime) return;
+
+    const interval = setInterval(() => {
+      setBlockedTime((prev) => (prev && prev > 1 ? prev - 1 : null));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [blockedTime]);
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,6 +37,14 @@ export default function LoginPage() {
       });
 
       const data = await res.json();
+
+      if (res.status === 429 && data.blocked_secs) {
+        setBlockedTime(data.blocked_secs);
+        setMessage("Слишком много попыток. Подождите.");
+        setMessageColor("text-red-600");
+        return;
+      }
+
 
       if (res.ok) {
         setMessage("Успешный вход. Перенаправление...");
@@ -80,6 +100,12 @@ export default function LoginPage() {
           Зарегистрироваться
         </a>
       </p>
+      {blockedTime && (
+        <p className="text-red-500 font-medium">
+          Повторите попытку через {blockedTime} сек.
+        </p>
+      )}
+
     </form>
   );
 }
