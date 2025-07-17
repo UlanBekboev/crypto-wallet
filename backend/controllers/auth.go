@@ -108,40 +108,54 @@ func Register(c *gin.Context) {
 	}
 
 	if err := utils.Validate.Struct(input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"errors": utils.FormatValidationErrors(err),
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"errors": utils.FormatValidationErrors(err)})
 		return
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка хеширования"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при хешировании пароля"})
 		return
 	}
 
-	var existing models.User
-	err = config.DB.Get(&existing, "SELECT * FROM users WHERE email=$1", input.Email)
-	if err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Email уже зарегистрирован"})
+	// Создаем нового пользователя
+	result := config.DB.QueryRow(
+		"INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id, email",
+		input.Email, hashedPassword,
+	)
+
+	var user models.User
+	if err := result.Scan(&user.ID, &user.Email); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при создании пользователя"})
 		return
 	}
 
-	_, err = config.DB.Exec("INSERT INTO users (email, password) VALUES ($1, $2)", input.Email, hashedPassword)
-if err != nil {
-    if strings.Contains(err.Error(), "duplicate key value") && strings.Contains(err.Error(), "users_email_key") {
-        c.JSON(http.StatusConflict, gin.H{"error": "Этот email уже зарегистрирован"})
-    } else {
-        c.JSON(http.StatusInternalServerError, gin.H{
-            "error":   "Ошибка записи в БД",
-            "details": err.Error(),
-        })
-    }
-    return
+	// 🔑 Генерируем токены
+	accessToken, err := utils.GenerateAccessToken(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка генерации access токена"})
+		return
+	}
+
+	refreshToken, err := utils.GenerateRefreshToken(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка генерации refresh токена"})
+		return
+	}
+
+	// 🍪 Устанавливаем токены в cookie
+	utils.SetAccessTokenCookie(c, accessToken)
+	utils.SetRefreshTokenCookie(c, refreshToken)
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Регистрация успешна",
+		"user": gin.H{
+			"id":    user.ID,
+			"email": user.Email,
+		},
+	})
 }
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Успешная регистрация"})
-}
 
 func RefreshToken(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")

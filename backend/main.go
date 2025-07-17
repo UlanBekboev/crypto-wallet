@@ -32,6 +32,7 @@ func main() {
 	})
 
 	routes.AuthRoutes(r)
+	routes.WalletRoutes(r)
 
 	err = r.Run(":8080")
 	if err != nil {
