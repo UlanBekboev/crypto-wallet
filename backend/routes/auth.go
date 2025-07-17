@@ -21,7 +21,3 @@ func AuthRoutes(r *gin.Engine) {
 		auth.POST("/logout", controllers.Logout)
 	}
 }
-
-//auth.POST("/forgot-password", controllers.ForgotPassword)
-//auth.POST("/reset-password", controllers.ResetPassword)
-//auth.GET("/logout", controllers.Logout)
