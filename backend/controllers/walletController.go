@@ -1,41 +1,57 @@
 package controllers
 
 import (
-	"net/http"
-
+	"backend/config"
+	"backend/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"backend/models"
-	"backend/config"
+	"net/http"
 )
 
-// POST /wallet
 func CreateWallet(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
+	userCtx, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не найден"})
+		return
+	}
+	user := userCtx.(models.User)
 
-	id := uuid.New()
-	_, err := config.DB.Exec(`
-		INSERT INTO wallets (id, user_id, balance, created_at)
-		VALUES ($1, $2, 0, NOW())
-	`, id, userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "wallet creation failed"})
+	var input struct {
+		Address string `json:"address" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"wallet_id": id})
+	wallet := models.Wallet{
+		ID:            uuid.New(),
+		UserID:        user.ID,
+		WalletAddress: input.Address,
+	}
+
+	if err := config.DB.Create(&wallet).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при создании кошелька"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Кошелёк успешно создан", "wallet": wallet})
 }
 
-// GET /wallet
 func GetWallet(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
+	userCtx, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не найден"})
+		return
+	}
+	user := userCtx.(models.User)
 
 	var wallet models.Wallet
-	err := config.DB.Get(&wallet, `SELECT * FROM wallets WHERE user_id = $1`, userID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
+	if err := config.DB.Where("user_id = ?", user.ID).First(&wallet).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Кошелёк не найден"})
 		return
 	}
 
-	c.JSON(http.StatusOK, wallet)
+	c.JSON(http.StatusOK, gin.H{"wallet": wallet})
 }

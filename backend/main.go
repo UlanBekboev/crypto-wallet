@@ -4,28 +4,28 @@ import (
 	"backend/config"
 	"backend/routes"
 	"backend/middleware"
+	"backend/models"
 	"github.com/gin-gonic/gin"
-	"backend/utils"
 	"github.com/gin-contrib/cors"
+	"gorm.io/gorm"
 	"log"
 )
 
 func main() {
 	err := config.InitDB()
-	utils.InitValidator()
 	if err != nil {
 		log.Fatal("Ошибка подключения к БД:", err)
 	}
+
+	err = config.DB.AutoMigrate(&models.User{}, &models.Wallet{}, &models.Transaction{})
+	if err != nil {
+		log.Fatal("Ошибка миграции:", err)
+	}
+
 	middleware.InitRateLimiter()
 
 	r := gin.Default()
-
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
-		AllowHeaders:     []string{"Origin", "Authorization", "Content-Type"},
-		AllowCredentials: true,
-	}))
+	r.Use(cors.Default())
 
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "Добро пожаловать!"})
@@ -38,7 +38,4 @@ func main() {
 	if err != nil {
 		log.Fatal("Ошибка запуска сервера:", err)
 	}
-
-	r.Run(":8080")
 }
-

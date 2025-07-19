@@ -7,7 +7,7 @@ import (
 )
 
 func WalletRoutes(r *gin.Engine) {
-	auth := r.Group("/api/wallet")
+	auth := r.Group("/api/auth/wallet")
 	auth.Use(middleware.AuthMiddleware())
 	{
 		auth.POST("/connect", controllers.ConnectWallet)

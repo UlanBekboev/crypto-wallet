@@ -1,33 +1,34 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
-	"github.com/jmoiron/sqlx"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-var DB *sqlx.DB
-
-func InitDB() error {
+func ConnectDatabase() (*gorm.DB, error) {
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("Не удалось загрузить .env файл")
+		log.Println("⚠️ Не удалось загрузить .env, использую переменные окружения")
 	}
 
-	dbURL := os.Getenv("DATABASE_URL")
-	DB, err = sqlx.Open("postgres", dbURL)
+	dsn := fmt.Sprintf(
+		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
+		os.Getenv("DB_HOST"),
+		os.Getenv("DB_USER"),
+		os.Getenv("DB_PASSWORD"),
+		os.Getenv("DB_NAME"),
+		os.Getenv("DB_PORT"),
+	)
+
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = DB.Ping()
-	if err != nil {
-		return err
-	}
-
-	log.Println("✅ Успешное подключение к PostgreSQL")
-	return nil
+	return db, nil
 }

@@ -28,10 +28,7 @@ func ForgotPassword(c *gin.Context) {
 	token := hex.EncodeToString(b)
 
 	// Сохранить токен в БД
-	_, err := config.DB.Exec(`
-		INSERT INTO password_resets (email, token, expires_at)
-		VALUES ($1, $2, $3)
-	`, input.Email, token, time.Now().Add(15*time.Minute))
+	err := config.DB.Model(&user).Update("password", newHashedPassword).Error
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось создать токен"})
 		return

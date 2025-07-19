@@ -6,9 +6,11 @@ import (
 )
 
 type Transaction struct {
-	ID           uuid.UUID `json:"id" db:"id"`
-	FromWalletID uuid.UUID `json:"from_wallet_id" db:"from_wallet_id"`
-	ToWalletID   uuid.UUID `json:"to_wallet_id" db:"to_wallet_id"`
-	Amount       int64     `json:"amount" db:"amount"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	ID        uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey"`
+	WalletID  uuid.UUID `gorm:"type:uuid;not null"`
+	Wallet    Wallet    `gorm:"foreignKey:WalletID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Amount    float64   `gorm:"not null"`
+	Type      string    `gorm:"type:varchar(10);not null"` // например: "in" или "out"
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
