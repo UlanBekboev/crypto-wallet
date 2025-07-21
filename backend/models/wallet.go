@@ -1,16 +1,15 @@
 package models
 
 import (
-    "github.com/google/uuid"
-    "time"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 type Wallet struct {
-    ID        uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey"`
-    UserID    uuid.UUID
-    User      *User     `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"-"`
-    Address   string    `gorm:"not null"`
-    Balance   float64   `gorm:"default:0"`
-    CreatedAt time.Time
-    UpdatedAt time.Time
+	ID        uuid.UUID `gorm:"type:uuid;primary_key"`
+	UserID    uuid.UUID `gorm:"type:uuid;not null;unique"` // 1-1 связь
+	Balance   int64     `gorm:"default:0"` // В центах (например, 100 = 1.00)
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }

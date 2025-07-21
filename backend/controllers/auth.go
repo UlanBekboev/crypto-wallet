@@ -4,9 +4,9 @@ import (
 	"backend/config"
 	"backend/models"
 	"backend/utils"
-	"fmt"
 	"net/http"
 
+	"gorm.io/gorm"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -35,8 +35,27 @@ func Register(c *gin.Context) {
 		Password: string(hashedPassword),
 	}
 
-	if err := config.DB.Create(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при создании пользователя"})
+	// Создание пользователя и кошелька в транзакции
+	err = config.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&user).Error; err != nil {
+			return err
+		}
+
+		// Создание кошелька с нулевым балансом
+		wallet := models.Wallet{
+			ID:      uuid.New(),
+			UserID:  user.ID,
+			Balance: 0,
+		}
+		if err := tx.Create(&wallet).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при регистрации"})
 		return
 	}
 
@@ -49,7 +68,7 @@ func Register(c *gin.Context) {
 	utils.SetAuthCookies(c, tokens)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Пользователь зарегистрирован",
+		"message": "Пользователь зарегистрирован и кошелёк создан",
 		"user": gin.H{
 			"id":    user.ID,
 			"email": user.Email,
@@ -105,11 +124,15 @@ func Me(c *gin.Context) {
 	user := userCtx.(models.User)
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":        user.ID,
-		"email":     user.Email,
-		"createdAt": user.CreatedAt,
+		"user": gin.H{
+			"id":        user.ID,
+			"email":     user.Email,
+			"createdAt": user.CreatedAt,
+			"name":      user.Name, // если есть
+		},
 	})
 }
+
 
 func ChangePassword(c *gin.Context) {
 	userCtx, exists := c.Get("user")
@@ -163,3 +186,60 @@ func Logout(c *gin.Context) {
 	c.SetCookie("refresh_token", "", -1, "/", "localhost", false, true)
 	c.JSON(http.StatusOK, gin.H{"message": "Выход выполнен"})
 }
+
+func RefreshToken(c *gin.Context) {
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil || refreshToken == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token not found"})
+		return
+	}
+
+	userIDStr, err := utils.ParseRefreshToken(refreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	tokens, err := utils.GenerateTokens(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+		return
+	}
+
+	utils.SetAuthCookies(c, tokens)
+
+	c.JSON(http.StatusOK, gin.H{"message": "Token refreshed"})
+}
+
+func UpdateProfile(c *gin.Context) {
+	userID := c.GetString("userID")
+
+	var input struct {
+		Name string `json:"name"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return
+	}
+
+	var user models.User
+	if err := config.DB.First(&user, "id = ?", userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	if err := config.DB.Save(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"user": user})
+}
+
