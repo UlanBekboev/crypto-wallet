@@ -12,19 +12,29 @@ import (
 
 // Получить баланс кошелька
 func GetWallet(c *gin.Context) {
-	userID, exists := c.Get("user_id")
+	user, exists := c.Get("user")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не найден"})
 		return
 	}
 
+	u, ok := user.(models.User)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный формат пользователя"})
+		return
+	}
+
 	var wallet models.Wallet
-	if err := config.DB.Where("user_id = ?", userID).First(&wallet).Error; err != nil {
+	if err := config.DB.Where("user_id = ?", u.ID).First(&wallet).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Кошелёк не найден"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"balance": wallet.Balance})
+	c.JSON(http.StatusOK, gin.H{
+		"wallet": gin.H{
+			"balance": wallet.Balance,
+		},
+	})
 }
 
 // Перевод средств между кошельками
@@ -37,7 +47,7 @@ func Transfer(c *gin.Context) {
 
 	var input struct {
 		ToUserID string `json:"to_user_id" binding:"required"`
-		Amount   int64  `json:"amount" binding:"required,min=1"`
+		Amount   float64  `json:"amount" binding:"required,min=1"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
