@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePublicClient, useAccount, useBalance } from "wagmi";
 import { formatEther } from "viem";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { ProfileNavbar } from "@/components/ProfileNavbar";
 
 type User = {
   id: number;
@@ -82,46 +83,52 @@ export default function ProfilePage() {
   if (!user) return <div className="text-center mt-10">Загрузка профиля...</div>;
 
   return (
-    <div className="max-w-xl mx-auto mt-20 bg-white p-6 rounded shadow space-y-4">
-      <h2 className="text-2xl font-bold">Ваш профиль</h2>
-      <p><strong>Адрес:</strong> {address}</p>
-      <p>
-        <strong>Баланс:</strong>{' '}
-        {isLoading ? 'Загрузка...' : `${balance?.formatted} ${balance?.symbol}`}
-      </p>
-      <p><strong>ID:</strong> {user.id}</p>
-      <p><strong>Email:</strong> {user.email}</p>
-      {user.name && <p><strong>Имя:</strong> {user.name}</p>}
-
-      <div className="pt-4 border-t">
-        <h3 className="text-lg font-semibold mb-2">Связь с MetaMask</h3>
-        <ConnectButton accountStatus="address" chainStatus="icon" showBalance />
-        {address && ethBalance && (
-          <p className="mt-2 text-sm text-gray-700">
-            💰 Баланс ETH: <strong>{ethBalance}</strong>
+    <>
+      <ProfileNavbar />
+      <div className="max-w-xl mx-auto mt-6 bg-white p-6 rounded shadow space-y-4">
+        <div className="max-w-xl mx-auto mt-20 bg-white p-6 rounded shadow space-y-4">
+          <h2 className="text-2xl font-bold">Ваш профиль</h2>
+          <p><strong>Адрес:</strong> {address}</p>
+          <p>
+            <strong>Баланс:</strong>{' '}
+            {isLoading ? 'Загрузка...' : `${balance?.formatted} ${balance?.symbol}`}
           </p>
-        )}
+          <p><strong>ID:</strong> {user.id}</p>
+          <p><strong>Email:</strong> {user.email}</p>
+          {user.name && <p><strong>Имя:</strong> {user.name}</p>}
+
+          <div className="pt-4 border-t">
+            <h3 className="text-lg font-semibold mb-2">Связь с MetaMask</h3>
+            <ConnectButton accountStatus="address" chainStatus="icon" showBalance />
+            {address && ethBalance && (
+              <p className="mt-2 text-sm text-gray-700">
+                💰 Баланс ETH: <strong>{ethBalance}</strong>
+              </p>
+            )}
+          </div>
+
+          <button
+            onClick={async () => {
+              await fetch("http://localhost:8080/api/auth/logout", {
+                method: "POST",
+                credentials: "include",
+              });
+              router.push("/login");
+            }}
+            className="bg-red-600 text-white px-4 py-2 rounded"
+          >
+            Выйти
+          </button>
+
+          <Link
+            href="/change-password"
+            className="inline-block mt-4 bg-blue-600 text-white px-4 py-2 rounded"
+          >
+            Сменить пароль
+          </Link>
+        </div>
       </div>
-
-      <button
-        onClick={async () => {
-          await fetch("http://localhost:8080/api/auth/logout", {
-            method: "POST",
-            credentials: "include",
-          });
-          router.push("/login");
-        }}
-        className="bg-red-600 text-white px-4 py-2 rounded"
-      >
-        Выйти
-      </button>
-
-      <Link
-        href="/change-password"
-        className="inline-block mt-4 bg-blue-600 text-white px-4 py-2 rounded"
-      >
-        Сменить пароль
-      </Link>
-    </div>
+    </>
+    
   );
 }

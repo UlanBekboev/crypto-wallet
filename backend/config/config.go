@@ -1,21 +1,30 @@
-// config/config.go
 package config
 
 import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"os"
 	"log"
 )
 
-var DB *gorm.DB
+var (
+	DB         *gorm.DB
+	JWT_SECRET string
+)
 
 func InitDB() error {
-	dsn := "host=localhost user=postgres password=yourpassword dbname=wallet port=5432 sslmode=disable"
+	dsn := os.Getenv("DATABASE_URL")
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return err
 	}
 	DB = db
-	log.Println("Подключение к базе данных прошло успешно!")
 	return nil
+}
+
+func InitAppConfig() {
+	JWT_SECRET = os.Getenv("JWT_SECRET")
+	if JWT_SECRET == "" {
+		log.Fatal("JWT_SECRET not set in environment variables")
+	}
 }

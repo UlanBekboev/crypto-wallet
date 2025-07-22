@@ -1,15 +1,15 @@
 package middleware
 
 import (
-	"backend/utils"
-	"context"
 	"net/http"
 	"time"
 
+	"backend/config"
+	"backend/models"
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis_rate/v10"
-	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/go-redis/redis_rate/v10"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 var (
@@ -55,43 +55,40 @@ func RateLimitMiddleware(limit int, duration time.Duration) gin.HandlerFunc {
 	}
 }
 
-// Middleware для проверки JWT access токена
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		tokenStr, err := c.Cookie("access_token")
-		if err != nil || tokenStr == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Отсутствует токен авторизации",
-			})
+		// 🔧 1. Попытка получить токен из cookie
+		token, err := c.Cookie("access_token")
+		if err != nil || token == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization cookie missing"})
 			return
 		}
 
-		claims, err := utils.ValidateAccessToken(tokenStr)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Неверный или просроченный токен",
-			})
+		// 🔒 2. Проверка токена
+		claims := jwt.MapClaims{}
+		parsedToken, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
+			return []byte(config.JWT_SECRET), nil
+		})
+		if err != nil || !parsedToken.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			return
 		}
 
-		userIDStr, ok := claims["user_id"].(string)
+		// 👤 3. Извлечение ID пользователя
+		userID, ok := claims["user_id"].(string)
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "user_id не строка",
-			})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
 			return
 		}
 
-		userID, err := uuid.Parse(userIDStr)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "user_id невалидный UUID",
-			})
+		var user models.User
+		if err := config.DB.First(&user, "id = ?", userID).Error; err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 			return
 		}
 
-		// Передаём user_id в контекст
-		c.Set("user_id", userID)
+		// ✅ Устанавливаем пользователя в контекст
+		c.Set("user", user)
 		c.Next()
 	}
 }
